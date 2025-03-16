@@ -15,6 +15,7 @@ x86/
 x64/Release/
 x64/Debug/
 # Ignore project files
+*.vcxproj
 *.vcxproj.user
 *.vcxproj.filters
 *.sln
