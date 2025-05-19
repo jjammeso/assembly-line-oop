@@ -12,74 +12,64 @@
 namespace sdds {
     // Constructor for LineManager class
 	LineManager::LineManager(const std::string& file, const std::vector<Workstation*>& stations) {
+		std::ifstream fileObj(file);
+		Utilities utilObj;
+		utilObj.setDelimiter('|');
+		size_t pos{ 0 };
+		bool more{ true };
 
-        Utilities ut;
-        ut.setDelimiter('|');
+		try {
+			if (!fileObj.is_open()) {
+				throw "Failed to open file";
+			}
+			else {
+				std::string str;
+				while (std::getline(fileObj, str)) {
+					size_t pos{ 0 };
+					std::string token = utilObj.extractToken(str, pos, more);
 
-        // Open the file for reading
-        std::ifstream ifs(file);
-        if (!ifs) {
-            throw(std::string("File does not exist."));
-        }
-        try {
-            // Read lines from the file and configure active stations on the assembly line
-            while (ifs.good()) {
-                size_t activeStn{}, nextStn{};
-                bool more{ true }, EOL{ false };
-                std::string line{};
-                size_t pos{ 0 };
+					auto it = std::find_if(begin(stations), end(stations), [=](const Workstation* station) {
+						return (token == station->getItemName());
+						});
+					if (it == stations.end()) {
+						throw std::string("Error: Station not found for token: " + token);
+					}
+					if (more) {
+						std::string nxtStn = utilObj.extractToken(str, pos, more);
+						auto itNxtStn = std::find_if(begin(stations), end(stations), [=](const Workstation* station) {
+							return (nxtStn == station->getItemName());
+							});
+						if (itNxtStn == stations.end()) {
+							throw std::string("Error: Next station not found for token: " + nxtStn);
+						}
+						(*it)->setNextStation(*itNxtStn);
 
-                std::getline(ifs, line);
-                // Extract the first token from the line
-                std::string token = ut.extractToken(line, pos, more);
+					}
+					m_activeLine.push_back(*it);
+				}
 
-                // Find the corresponding station in the 'stations' vector based on the token
-                auto it = std::find_if(begin(stations), end(stations), [=](const Workstation* station){
-                        return (station->getItemName() == token);
-                    });
+				m_cntCustomerOrder = g_pending.size();
 
-                activeStn = it - begin(stations);
+				auto it = std::find_if(begin(m_activeLine), end(m_activeLine), [this](const Workstation* station) {
+					bool unique = std::none_of(begin(m_activeLine), end(m_activeLine), [=](const Workstation* station2) {
+						Workstation* next = station2->getNextStation();
+						return next && station->getItemName() == next->getItemName();
+						});
+					return unique;
+					});
 
-                if (more) {
-                    // If there is more in the line, extract the next token
-                    token = ut.extractToken(line, pos, more);
+				if (it != m_activeLine.end()) {
+					m_firstStation = *it;
+				}
+				else {
+					throw std::string("Error: First station could not be identified.");
+				}
+			}
+		}
+		catch (...) {
+			throw(std::string("Error: Construction of the Line Manager failed."));
 
-                    // Find the corresponding station for the next token
-                    auto it2 = std::find_if(begin(stations), end(stations), [=](const Workstation* station){
-                            return (station->getItemName() == token);
-                        });
-                    nextStn = it2 - begin(stations);
-                }
-                else { 
-                    // If there are no more tokens, set the end of line (EOL) flag
-                    EOL = true;
-                }
-
-                // Set the next station for the active station
-                stations[activeStn]->setNextStation((EOL) ? nullptr : stations[nextStn]);
-
-                m_activeLine.push_back(stations[activeStn]);
-            }
-
-            // Find the first station in the assembly line and store its address in m_firstStation
-            auto it = std::find_if(begin(stations), end(stations), [=](const Workstation* station){
-                    bool unique = std::none_of(begin(stations), end(stations), [=](const Workstation* station2){
-                            auto* ptr = station2->getNextStation();
-                            return (station->getItemName() == ((ptr) ? ptr->getItemName() : ""));
-                        });
-                    return unique;
-                });
-
-            size_t first = it - begin(stations);
-            m_firstStation = stations[first];
-
-            // Store the total number of customer orders in m_cntCustomerOrder
-            m_cntCustomerOrder = g_pending.size();
-
-        }
-        catch (...) {
-            throw(std::string("Error: Construction of the Line Manager failed."));
-        }
+		}
 	}
 
     // Reorder the stations in the assembly line
